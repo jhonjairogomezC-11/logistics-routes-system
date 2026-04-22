@@ -9,4 +9,5 @@ urlpatterns = [
     path('routes/execute/',                    views.RouteExecuteView.as_view(),     name='route-execute'),
     path('routes/<int:id_route>/',             views.RouteDetailView.as_view(),      name='route-detail'),
     path('routes/<int:id_route>/logs/',        views.RouteLogsView.as_view(),        name='route-logs'),
+    path('logs/',                              views.GlobalExecutionLogListView.as_view(), name='global-logs'),
 ]

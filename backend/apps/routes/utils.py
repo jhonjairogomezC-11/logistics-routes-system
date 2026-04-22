@@ -126,6 +126,35 @@ def parse_excel(file):
     else:
         sheet_name = 'routes'
 
+    # 1.3 Cargar Hojas Maestras (Opcional si existen)
+    oficinas_data = []
+    priorities_data = []
+    poblaciones_data = []
+
+    # Buscar hojas maestras con nombres flexibles
+    for sname in wb.sheetnames:
+        norm_name = normalize_header(sname)
+        ws = wb[sname]
+        
+        if norm_name in ['oficinaorg', 'oficina', 'oficinas']:
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if row[0] is not None: oficinas_data.append({'id': row[0], 'nombre': row[1]})
+        
+        elif norm_name in ['prioritiesref', 'priority', 'prioridades']:
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if row[0] is not None: priorities_data.append({'id': row[0], 'nombre': row[1]})
+        
+        elif norm_name in ['poblacioncor', 'poblacion', 'puntos']:
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if row[0] is not None: 
+                    poblaciones_data.append({
+                        'id': row[0], 
+                        'ciudad': row[1], 
+                        'lat': row[2], 
+                        'lon': row[3]
+                    })
+
+    # 2. Procesar Datos de la Hoja de Rutas (Código anterior robustecido)
     ws_routes = wb[sheet_name]
     
     # Obtener encabezados de forma segura
@@ -233,4 +262,12 @@ def parse_excel(file):
                 'created_at':        cr_at or timezone.now(),
             })
 
-    return {'valid_rows': valid_rows, 'errors': errors}
+    return {
+        'valid_rows': valid_rows, 
+        'errors': errors,
+        'has_master_data': {
+            'oficinas': oficinas_data,
+            'priorities': priorities_data,
+            'poblaciones': poblaciones_data
+        }
+    }

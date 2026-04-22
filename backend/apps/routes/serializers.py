@@ -10,7 +10,7 @@ class ExecutionLogSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = ExecutionLog
-        fields = ['id', 'route_id', 'execution_time', 'result', 'message']
+        fields = ['id', 'route', 'execution_time', 'result', 'message']
         read_only_fields = fields
 
 

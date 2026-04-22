@@ -87,7 +87,9 @@ class ExecutionLog(models.Model):
         Route,
         to_field='id_route',
         on_delete=models.CASCADE,
-        related_name='execution_logs'
+        related_name='execution_logs',
+        null=True,
+        blank=True
     )
     execution_time = models.DateTimeField(auto_now_add=True)
     result = models.CharField(max_length=20, choices=RESULT_CHOICES)

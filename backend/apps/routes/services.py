@@ -14,11 +14,38 @@ class RouteImportService:
         Procesa un archivo Excel de rutas.
         Crea automáticamente las oficinas faltantes para evitar errores de integridad.
         """
-        from .models import OficinaOrg
+        from .models import OficinaOrg, PriorityRef, PoblacionCor
         
         result = parse_excel(file)
         valid_rows = result['valid_rows']
         errors = result['errors']
+        master_data = result.get('has_master_data', {})
+
+        # ─── Sincronizar Tablas Maestras ───
+        # 1. Oficinas (ID y Nombre real)
+        for ofi in master_data.get('oficinas', []):
+            OficinaOrg.objects.update_or_create(
+                id_oficina=ofi['id'],
+                defaults={'nombre_oficina_origen': str(ofi['nombre']).strip() or f"Oficina {ofi['id']}"}
+            )
+        
+        # 2. Prioridades (ID y Nombre descriptivo)
+        for prio in master_data.get('priorities', []):
+            PriorityRef.objects.update_or_create(
+                priority=prio['id'],
+                defaults={'priority_name': str(prio['nombre']).strip() or f"Prioridad {prio['id']}"}
+            )
+
+        # 3. Poblaciones / Puntos (ID, Ciudad y Coordenadas de referencia)
+        for pob in master_data.get('poblaciones', []):
+            PoblacionCor.objects.update_or_create(
+                id_punto=pob['id'],
+                defaults={
+                    'ciudad': str(pob['ciudad']).strip(),
+                    'lat_ref': Decimal(str(pob['lat'] or 0)),
+                    'lon_ref': Decimal(str(pob['lon'] or 0)),
+                }
+            )
 
         imported = 0
         duplicates = 0
@@ -54,7 +81,7 @@ class RouteImportService:
                         continue
 
                     # 3. Crear la ruta
-                    Route.objects.create(
+                    route_obj = Route.objects.create(
                         id_route=row['id_route'],
                         id_oficina_id=oficina_id,
                         origin=row['origin'],
@@ -66,6 +93,13 @@ class RouteImportService:
                         status=row['status'],
                         payload=row['payload'],
                         created_at=row['created_at'],
+                    )
+                    
+                    # 4. Crear log inicial para TODAS las rutas (Traceability total)
+                    ExecutionLog.objects.create(
+                        route=route_obj,
+                        result='SUCCESS' if route_obj.status in ['READY', 'PENDING', 'EXECUTED'] else 'ERROR',
+                        message=f"Ruta cargada en sistema. Estado inicial: {route_obj.status}"
                     )
 
                     imported += 1
@@ -81,14 +115,22 @@ class RouteImportService:
                 })
                 logger.warning(f"Error al importar ruta {row.get('id_route')}: {e}")
 
+        # 5. Registrar errores de PARSEO (los que no llegaron a ser valid_rows)
+        for err in result['errors']:
+            ExecutionLog.objects.create(
+                route=None,
+                result='ERROR',
+                message=f"FALLO DE CARGA - Fila {err.get('row')}: Campo [{err.get('field')}] valor [{err.get('value')}] -> {err.get('reason')}"
+            )
+
         logger.info(f"Importación completada: {imported} importadas, {duplicates} duplicadas, {len(errors)} errores")
 
         return {
             'summary': {
-                'total': imported + duplicates + len(result['errors']),
+                'total': imported + duplicates + len(errors) + len(result['errors']),
                 'imported': imported,
                 'duplicates': duplicates,
-                'errors': len(errors),
+                'errors': len(errors) + len(result['errors']),
             },
             'errors': errors
         }
