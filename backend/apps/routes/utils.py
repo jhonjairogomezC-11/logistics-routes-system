@@ -65,10 +65,10 @@ def validate_coordinates(lat, lon):
     except (ValueError, TypeError):
         return False, 'Coordenadas no son numéricas'
 
-    if not (-4.0 <= lat <= 12.5):
-        return False, f'Latitud {lat} fuera del rango válido (-4.0 a 12.5)'
-    if not (-79.0 <= lon <= -67.0):
-        return False, f'Longitud {lon} fuera del rango válido (-79.0 a -67.0)'
+    if not (-4.3 <= lat <= 13.5):
+        return False, f'Latitud {lat} fuera del rango válido (-4.3 a 13.5)'
+    if not (-82.0 <= lon <= -66.0):
+        return False, f'Longitud {lon} fuera del rango válido (-82.0 a -66.0)'
 
     return True, None
 
