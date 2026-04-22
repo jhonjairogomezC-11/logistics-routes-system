@@ -19,5 +19,5 @@ dist/
 .idea/
 *.DS_Store
 
-
-backend/data/*.xlsx
+# Data / Datasets
+backend/data/
