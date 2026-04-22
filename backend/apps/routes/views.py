@@ -20,8 +20,16 @@ from .serializers import (
 )
 from .services import RouteExecutionService, RouteImportService
 
+from .services import RouteExecutionService, RouteImportService
+
 logger = logging.getLogger('apps.routes')
 
+
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 class RouteListCreateView(ListCreateAPIView):
     """
@@ -40,6 +48,7 @@ class RouteListCreateView(ListCreateAPIView):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_class = RouteFilter
     ordering_fields = ['created_at', 'priority', 'distance_km', 'status']
+    pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):
         if self.request.method == 'POST':

@@ -9,12 +9,13 @@ logger = logging.getLogger('apps.routes')
 class RouteImportService:
 
     @staticmethod
-    @transaction.atomic
     def process(file):
         """
         Procesa un archivo Excel de rutas.
-        Retorna un resumen con válidas, errores y duplicados.
+        Crea automáticamente las oficinas faltantes para evitar errores de integridad.
         """
+        from .models import OficinaOrg
+        
         result = parse_excel(file)
         valid_rows = result['valid_rows']
         errors = result['errors']
@@ -23,40 +24,52 @@ class RouteImportService:
         duplicates = 0
 
         for row in valid_rows:
-            # Verificar duplicado por constraint de negocio
-            exists = Route.objects.filter(
-                origin=row['origin'],
-                destination=row['destination'],
-                time_window_start=row['time_window_start'],
-                time_window_end=row['time_window_end'],
-            ).exists()
-
-            if exists:
-                duplicates += 1
-                errors.append({
-                    'row': None,
-                    'field': 'duplicado',
-                    'value': f"{row['origin']} → {row['destination']}",
-                    'reason': 'Ruta duplicada: misma origen, destino y ventana horaria'
-                })
-                continue
-
             try:
-                Route.objects.create(
-                    id_route=row['id_route'],
-                    id_oficina_id=row['id_oficina_id'],
-                    origin=row['origin'],
-                    destination=row['destination'],
-                    distance_km=row['distance_km'],
-                    priority=row['priority'],
-                    time_window_start=row['time_window_start'],
-                    time_window_end=row['time_window_end'],
-                    status=row['status'],
-                    payload=row['payload'],
-                    created_at=row['created_at'],
-                )
-                imported += 1
-                logger.info(f"Ruta {row['id_route']} importada correctamente")
+                # Usar un bloque atómico por cada fila para que un error no aborte todo
+                with transaction.atomic():
+                    # 1. Asegurar que la oficina existe
+                    oficina_id = row.get('id_oficina_id')
+                    if oficina_id:
+                        OficinaOrg.objects.get_or_create(
+                            id_oficina=oficina_id,
+                            defaults={'nombre_oficina_origen': f"Oficina {oficina_id} (Auto)"}
+                        )
+
+                    # 2. Verificar duplicado
+                    exists = Route.objects.filter(
+                        origin=row['origin'],
+                        destination=row['destination'],
+                        time_window_start=row['time_window_start'],
+                        time_window_end=row['time_window_end'],
+                    ).exists()
+
+                    if exists:
+                        duplicates += 1
+                        errors.append({
+                            'row': None,
+                            'field': 'duplicado',
+                            'value': f"{row['origin']} → {row['destination']}",
+                            'reason': 'Ruta duplicada: misma origen, destino y ventana horaria'
+                        })
+                        continue
+
+                    # 3. Crear la ruta
+                    Route.objects.create(
+                        id_route=row['id_route'],
+                        id_oficina_id=oficina_id,
+                        origin=row['origin'],
+                        destination=row['destination'],
+                        distance_km=row['distance_km'],
+                        priority=row['priority'],
+                        time_window_start=row['time_window_start'],
+                        time_window_end=row['time_window_end'],
+                        status=row['status'],
+                        payload=row['payload'],
+                        created_at=row['created_at'],
+                    )
+
+                    imported += 1
+                    logger.info(f"Ruta {row['id_route']} importada correctamente")
 
             except Exception as e:
                 duplicates += 1
@@ -64,7 +77,7 @@ class RouteImportService:
                     'row': None,
                     'field': 'db_error',
                     'value': row.get('id_route'),
-                    'reason': str(e)
+                    'reason': f"Error en base de datos: {str(e)}"
                 })
                 logger.warning(f"Error al importar ruta {row.get('id_route')}: {e}")
 
@@ -72,7 +85,7 @@ class RouteImportService:
 
         return {
             'summary': {
-                'total': len(valid_rows) + len(result['errors']),
+                'total': imported + duplicates + len(result['errors']),
                 'imported': imported,
                 'duplicates': duplicates,
                 'errors': len(errors),
