@@ -1,0 +1,296 @@
+{
+	"info": {
+		"_postman_id": "b3f0e0c1-1234-4a2b-8f7a-9c8d7e6f5a4b",
+		"name": "Logistics Routes System API",
+		"description": "Colección de pruebas funcionales mínimas para el sistema de gestión logística (Prueba Técnica).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Autenticación (Login)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"if (jsonData.token) {",
+							"    pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"admin\",\n    \"password\": \"admin\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/auth/login/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"auth",
+						"login",
+						""
+					]
+				},
+				"description": "Inicia sesión y guarda automáticamente el token en las variables de la colección para las siguientes peticiones."
+			},
+			"auth": {
+				"type": "noauth"
+			},
+			"response": []
+		},
+		{
+			"name": "2. Importación Masiva",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "{{base_url}}/api/routes/import/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						"import",
+						""
+					]
+				},
+				"description": "Sube un archivo Excel (.xlsx) para procesar múltiples rutas a la vez. Nota: Debes seleccionar el archivo desde la pestaña Body > form-data en Postman."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Creación Individual",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"id_route\": \"EXT-001\",\n    \"id_oficina_id\": \"OFI-10\",\n    \"origin\": \"Bogotá, Bodega Principal\",\n    \"destination\": \"Medellín, Centro\",\n    \"distance_km\": 415.5,\n    \"priority\": 1,\n    \"time_window_start\": \"2024-05-10T08:00:00Z\",\n    \"time_window_end\": \"2024-05-10T18:00:00Z\",\n    \"status\": \"READY\",\n    \"payload\": {\n        \"latitud\": 6.2442,\n        \"longitud\": -75.5812,\n        \"direccion\": \"Carrera 50 # 50-50, Medellín\",\n        \"piezas\": [\n            {\"peso\": 25.5}\n        ]\n    }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/routes/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						""
+					]
+				},
+				"description": "Crea una única ruta con validación completa de campos (distancia > 0, coordenadas de Colombia, fechas correctas, etc)."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Listado General (Paginado)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/routes/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						""
+					]
+				},
+				"description": "Obtiene la lista de todas las rutas paginadas (50 por página por defecto)."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Listado con Filtros y Orden",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/routes/?status=READY&priority=1&ordering=-distance_km",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						""
+					],
+					"query": [
+						{
+							"key": "status",
+							"value": "READY"
+						},
+						{
+							"key": "priority",
+							"value": "1"
+						},
+						{
+							"key": "ordering",
+							"value": "-distance_km",
+							"description": "Orden descendente por distancia"
+						}
+					]
+				},
+				"description": "Filtra las rutas por estado, prioridad, u otros campos, y permite ordenarlas."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Ejecución de Rutas (Batch)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"route_ids\": [\n        \"EXT-001\",\n        \"AUTO-2\"\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/api/routes/execute/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						"execute",
+						""
+					]
+				},
+				"description": "Cambia el estado de múltiples rutas a EXECUTED y genera los respectivos logs de auditoría."
+			},
+			"response": []
+		},
+		{
+			"name": "7. Consulta de Logs (Global)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/logs/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"logs",
+						""
+					]
+				},
+				"description": "Obtiene el registro de auditoría global de todo el sistema."
+			},
+			"response": []
+		},
+		{
+			"name": "8. Consulta de Logs (Por Ruta)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/routes/EXT-001/logs/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"routes",
+						"EXT-001",
+						"logs",
+						""
+					]
+				},
+				"description": "Obtiene el historial de ejecución de una ruta en específico."
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "value",
+				"value": "Token {{auth_token}}",
+				"type": "string"
+			},
+			{
+				"key": "key",
+				"value": "Authorization",
+				"type": "string"
+			},
+			{
+				"key": "in",
+				"value": "header",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

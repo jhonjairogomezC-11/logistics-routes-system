@@ -53,6 +53,19 @@ class RouteListCreateView(ListCreateAPIView):
             return RouteCreateSerializer
         return RouteSerializer
 
+    def perform_create(self, serializer):
+        from django.utils import timezone
+        # Asegurar que se asigne created_at, ya que el modelo no usa auto_now_add
+        # para permitir que el import asigne fechas históricas
+        route_obj = serializer.save(created_at=timezone.now())
+        
+        # Generar el log inicial de creación manual
+        ExecutionLog.objects.create(
+            route=route_obj,
+            result='SUCCESS' if route_obj.status in ('READY', 'PENDING', 'EXECUTED') else 'ERROR',
+            message=f"Ruta creada individualmente (API). Estado inicial: {route_obj.status}",
+        )
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
