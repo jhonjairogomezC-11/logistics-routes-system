@@ -17,8 +17,6 @@ El problema que resuelve este sistema es simple de enunciar pero tedioso de mane
 
 El sistema hace exactamente eso. Recibe el archivo, lo parsea hoja por hoja, sincroniza las tablas maestras de oficinas, prioridades y puntos geográficos, valida cada fila contra reglas concretas (distancia positiva, ventana horaria coherente, coordenadas dentro del territorio colombiano) y guarda solo lo que pasa. Todo lo que falla queda registrado en los logs de auditoría con fila, campo y motivo exactos.
 
-Una vez cargadas las rutas, se pueden ejecutar en lote enviando sus IDs, lo que cambia su estado a `EXECUTED` y genera el log correspondiente. Hay un dashboard que muestra el conteo por estado en tiempo real, una vista de lista con filtros y ordenamiento, y un historial de logs globales paginado. El frontend en Angular es la cara visible de todo esto, pero la API REST funciona igual de bien sola —de hecho, la colección de Postman ya viene lista.
-
 ---
 
 ## Qué hay dentro
@@ -63,7 +61,7 @@ El proyecto tiene tres capas bien separadas y un par de directorios de soporte:
 
 ## Cómo levantar el proyecto — con Docker (empieza por aquí)
 
-Esta es la forma más rápida. En dos minutos tenemos los tres servicios corriendo sin instalar Python ni Node.
+Esta es la forma más rápida. En dos minutos se tienen los tres servicios corriendo sin instalar Python ni Node.
 
 **Requisitos previos:** Docker Desktop instalado y corriendo. Nada más.
 
@@ -84,7 +82,6 @@ La primera vez tarda un poco más porque compila el frontend. Las siguientes vec
 
 ```bash
 docker compose ps
-# Los tres servicios deben aparecer como "running" o "healthy"
 ```
 
 **URLs una vez levantado:**
@@ -100,7 +97,7 @@ Credenciales del admin creado automáticamente: `admin` / `admin123`.
 **Para bajar todo:**
 ```bash
 docker compose down
-# Con -v si también queremos borrar el volumen de la base de datos
+# si también queremos borrar el volumen de la base de datos
 docker compose down -v
 ```
 
@@ -296,7 +293,3 @@ Para la importación (petición 2), hay que ir a Body → form-data, seleccionar
 **Timeout en Docker al importar archivos Excel grandes.** Gunicorn tiene el timeout configurado a 300 segundos en el `docker-compose.yml`. Si el archivo es extremadamente grande (miles de filas con payloads complejos), podría ser necesario aumentarlo. El comando de arranque está en la sección `command` del servicio `backend` en `docker-compose.yml`.
 
 **El `.env` del backend en local vs Docker.** En local, el `.env` va dentro de `backend/`. En Docker, las variables se inyectan directamente desde `docker-compose.yml`, así que el `.env` no se usa. Si se cambia algo en el `.env` esperando verlo en Docker, no va a funcionar — hay que editar el `docker-compose.yml`.
-
-**Puerto 4200 ocupado.** Nginx en el contenedor del frontend escucha en el puerto 4200 (configurado en `nginx.conf`). Si ese puerto está en uso, Docker Compose fallará al intentar mapearlo. Solución: cambiar `"4200:4200"` en `docker-compose.yml` al puerto disponible.
-
-**npm version mismatch en la imagen de Docker.** El `package.json` especifica `"packageManager": "npm@11.6.2"`. Si la imagen base de Node que se usa en el `Dockerfile` del frontend tiene una versión diferente de npm, puede haber advertencias durante el build. No rompe nada, pero si aparece un error de lock file, el `Dockerfile` instala con `npm install` (sin `--frozen-lockfile`) precisamente para evitar esto.
