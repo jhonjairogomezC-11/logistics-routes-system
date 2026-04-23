@@ -7,6 +7,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
+import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
   selector: 'app-layout',
@@ -18,7 +20,8 @@ import { MatListModule } from '@angular/material/list';
     MatButtonModule,
     MatSidenavModule,
     MatIconModule,
-    MatListModule
+    MatListModule,
+    MatMenuModule
   ],
   template: `
     <mat-toolbar color="primary" class="header">
@@ -27,9 +30,18 @@ import { MatListModule } from '@angular/material/list';
       </button>
       <span>Logistics Routes System</span>
       <span class="spacer"></span>
-      <button mat-icon-button>
+      <span class="user-name" *ngIf="authService.currentUser()">
+        {{ authService.currentUser()?.first_name || authService.currentUser()?.username }}
+      </span>
+      <button mat-icon-button [matMenuTriggerFor]="menu">
         <mat-icon>account_circle</mat-icon>
       </button>
+      <mat-menu #menu="matMenu">
+        <button mat-menu-item (click)="logout()">
+          <mat-icon>exit_to_app</mat-icon>
+          <span>Cerrar sesión</span>
+        </button>
+      </mat-menu>
     </mat-toolbar>
 
     <mat-sidenav-container class="sidenav-container">
@@ -90,6 +102,19 @@ import { MatListModule } from '@angular/material/list';
       color: #3f51b5 !important;
       border-left: 4px solid #3f51b5;
     }
+    .spacer {
+      flex: 1 1 auto;
+    }
+    .user-name {
+      font-size: 14px;
+      margin-right: 8px;
+    }
   `]
 })
-export class LayoutComponent {}
+export class LayoutComponent {
+  constructor(public authService: AuthService) {}
+
+  logout() {
+    this.authService.logout();
+  }
+}

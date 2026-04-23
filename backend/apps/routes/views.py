@@ -9,6 +9,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 
 from .filters import RouteFilter
 from .models import ExecutionLog, Route
@@ -35,6 +36,7 @@ class RouteListCreateView(ListCreateAPIView):
     GET  /api/routes/  → Lista paginada de rutas con filtros.
     POST /api/routes/  → Crea una ruta individual.
     """
+    permission_classes = [IsAuthenticated]
     queryset = (
         Route.objects
         .select_related('id_oficina')
@@ -70,6 +72,7 @@ class RouteDetailView(RetrieveUpdateAPIView):
     GET   /api/routes/<id_route>/ → Detalle de una ruta.
     PATCH /api/routes/<id_route>/ → Actualización parcial.
     """
+    permission_classes = [IsAuthenticated]
     queryset = Route.objects.all()
     serializer_class = RouteSerializer
     lookup_field = 'id_route'
@@ -84,6 +87,7 @@ class RouteImportView(APIView):
     """
     POST /api/routes/import/ → Sube un archivo Excel y procesa las rutas.
     """
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -99,6 +103,8 @@ class RouteLogsView(APIView):
     """
     GET /api/routes/<id_route>/logs/ → Historial de ejecución de una ruta específica.
     """
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, id_route):
         logs = ExecutionLog.objects.filter(
             route__id_route=str(id_route)
@@ -111,6 +117,8 @@ class RouteExecuteView(APIView):
     """
     POST /api/routes/execute/ → Ejecuta una lista de rutas por sus IDs.
     """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         serializer = RouteExecuteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -123,6 +131,7 @@ class GlobalExecutionLogListView(ListAPIView):
     """
     GET /api/logs/ → Auditoría global de logs paginada.
     """
+    permission_classes = [IsAuthenticated]
     queryset = ExecutionLog.objects.select_related('route').order_by('-execution_time')
     serializer_class = ExecutionLogSerializer
     pagination_class = StandardResultsSetPagination
@@ -142,6 +151,8 @@ class DashboardStatsView(APIView):
     """
     GET /api/dashboard/stats/ → Estadísticas del dashboard en una sola consulta.
     """
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         # Una sola consulta agrupada por status
         counts_qs = Route.objects.values('status').annotate(total=Count('id'))
