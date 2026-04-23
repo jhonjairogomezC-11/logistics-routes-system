@@ -89,21 +89,26 @@ import { RouteService } from '../../core/services/route.service';
           </div>
 
           <div class="table-container" *ngIf="dataSource.data.length > 0">
-            <h3>Detalle de Errores:</h3>
+            <h3>Detalle de Errores ({{ dataSource.data.length }}):</h3>
             <div class="mat-elevation-z2 table-wrapper">
               <table mat-table [dataSource]="dataSource">
                 <ng-container matColumnDef="row">
                   <th mat-header-cell *matHeaderCellDef>Fila</th>
-                  <td mat-cell *matCellDef="let element"> {{element.row}} </td>
+                  <td mat-cell *matCellDef="let element"> {{element.row ?? '—'}} </td>
                 </ng-container>
 
-                <ng-container matColumnDef="id_route">
-                  <th mat-header-cell *matHeaderCellDef>Ruta (ID)</th>
-                  <td mat-cell *matCellDef="let element" class="id-cell"> {{element.id_route}} </td>
+                <ng-container matColumnDef="field">
+                  <th mat-header-cell *matHeaderCellDef>Campo</th>
+                  <td mat-cell *matCellDef="let element" class="id-cell"> {{element.field}} </td>
+                </ng-container>
+
+                <ng-container matColumnDef="value">
+                  <th mat-header-cell *matHeaderCellDef>Valor</th>
+                  <td mat-cell *matCellDef="let element"> {{element.value ?? '(vacío)'}} </td>
                 </ng-container>
 
                 <ng-container matColumnDef="reason">
-                  <th mat-header-cell *matHeaderCellDef>Razón del Fallo</th>
+                  <th mat-header-cell *matHeaderCellDef>Motivo del Error</th>
                   <td mat-cell *matCellDef="let element"> {{element.reason}} </td>
                 </ng-container>
 
@@ -194,7 +199,7 @@ export class ImportComponent {
   loading = signal(false);
   results = signal<any>(null);
 
-  displayedColumns: string[] = ['row', 'id_route', 'reason'];
+  displayedColumns: string[] = ['row', 'field', 'value', 'reason'];
   dataSource = new MatTableDataSource<any>([]);
 
   @ViewChild(MatPaginator) set paginator(paginator: MatPaginator) {

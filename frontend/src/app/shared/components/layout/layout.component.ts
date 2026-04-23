@@ -80,6 +80,11 @@ import { MatListModule } from '@angular/material/list';
     .content {
       background-color: #f5f7fa;
     }
+    .main-container {
+      padding: 32px;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
     .active-link {
       background: rgba(63, 81, 181, 0.1);
       color: #3f51b5 !important;

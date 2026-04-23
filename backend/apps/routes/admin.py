@@ -38,6 +38,7 @@ class RouteAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'priority', 'created_at']
     search_fields = ['origin', 'destination', 'id_route']
+
     ordering = ['-created_at']
     readonly_fields = ['created_at']
     inlines = [ExecutionLogInline]

@@ -2,7 +2,6 @@
 import logging
 
 from django.db.models import Count
-from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView, ListAPIView
@@ -24,14 +23,17 @@ from .services import RouteExecutionService, RouteImportService
 
 logger = logging.getLogger('apps.routes')
 
+
 class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
+
 class RouteListCreateView(ListCreateAPIView):
     """
-    GET  /api/routes/   → Lista paginada de rutas con filtros.
-    POST /api/routes/   → Crea una ruta individual.
+    GET  /api/routes/  → Lista paginada de rutas con filtros.
+    POST /api/routes/  → Crea una ruta individual.
     """
     queryset = (
         Route.objects
@@ -65,8 +67,8 @@ class RouteListCreateView(ListCreateAPIView):
 
 class RouteDetailView(RetrieveUpdateAPIView):
     """
-    GET    /api/routes/<id>/ → Detalle de una ruta.
-    PATCH  /api/routes/<id>/ → Actualización parcial.
+    GET   /api/routes/<id_route>/ → Detalle de una ruta.
+    PATCH /api/routes/<id_route>/ → Actualización parcial.
     """
     queryset = Route.objects.all()
     serializer_class = RouteSerializer
@@ -88,24 +90,26 @@ class RouteImportView(APIView):
         serializer = RouteImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         file = serializer.validated_data['file']
-        
+
         result = RouteImportService.process(file)
         return Response({'success': True, 'data': result}, status=status.HTTP_201_CREATED)
 
 
 class RouteLogsView(APIView):
     """
-    GET /api/routes/<id>/logs/ → Historial de ejecución de una ruta específica.
+    GET /api/routes/<id_route>/logs/ → Historial de ejecución de una ruta específica.
     """
     def get(self, request, id_route):
-        logs = ExecutionLog.objects.filter(route__id_route=id_route).order_by('-execution_time')
+        logs = ExecutionLog.objects.filter(
+            route__id_route=str(id_route)
+        ).order_by('-execution_time')
         serializer = ExecutionLogSerializer(logs, many=True)
         return Response({'success': True, 'data': serializer.data})
 
 
 class RouteExecuteView(APIView):
     """
-    POST /api/routes/execute/ → Ejecuta una lista de rutas.
+    POST /api/routes/execute/ → Ejecuta una lista de rutas por sus IDs.
     """
     def post(self, request):
         serializer = RouteExecuteSerializer(data=request.data)
@@ -117,7 +121,7 @@ class RouteExecuteView(APIView):
 
 class GlobalExecutionLogListView(ListAPIView):
     """
-    GET /api/logs/ → Auditoría global de logs.
+    GET /api/logs/ → Auditoría global de logs paginada.
     """
     queryset = ExecutionLog.objects.select_related('route').order_by('-execution_time')
     serializer_class = ExecutionLogSerializer
@@ -136,18 +140,19 @@ class GlobalExecutionLogListView(ListAPIView):
 
 class DashboardStatsView(APIView):
     """
-    GET /api/dashboard/stats/ → Obtiene las estadísticas para el dashboard.
+    GET /api/dashboard/stats/ → Estadísticas del dashboard en una sola consulta.
     """
     def get(self, request):
-        stats = Route.objects.values('status').annotate(total=Count('id'))
-        
-        # Formatear el resultado para el frontend
+        # Una sola consulta agrupada por status
+        counts_qs = Route.objects.values('status').annotate(total=Count('id'))
+        counts = {item['status']: item['total'] for item in counts_qs}
+
         data = {
-            'total': Route.objects.count(),
-            'ready': Route.objects.filter(status='READY').count(),
-            'pending': Route.objects.filter(status='PENDING').count(),
-            'executed': Route.objects.filter(status='EXECUTED').count(),
-            'failed': Route.objects.filter(status='FAILED').count(),
+            'total':    Route.objects.count(),
+            'ready':    counts.get('READY', 0),
+            'pending':  counts.get('PENDING', 0),
+            'executed': counts.get('EXECUTED', 0),
+            'failed':   counts.get('FAILED', 0),
         }
-        
+
         return Response({'success': True, 'data': data})

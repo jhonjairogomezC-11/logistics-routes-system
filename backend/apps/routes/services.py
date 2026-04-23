@@ -13,57 +13,63 @@ class RouteImportService:
     def process(file):
         """
         Procesa un archivo Excel de rutas.
-        Crea automáticamente las oficinas faltantes para evitar errores de integridad.
+        1. Parsea el archivo y valida cada fila
+        2. Sincroniza tablas maestras (oficinas, prioridades, poblaciones)
+        3. Inserta solo los registros válidos (sin duplicados)
+        4. Retorna un reporte detallado con fila/campo/motivo para cada error
         """
         from .models import OficinaOrg, PriorityRef, PoblacionCor
-        
+
         result = parse_excel(file)
         valid_rows = result['valid_rows']
-        errors = result['errors']
+        # Capturar errores de parseo ANTES de modificar la lista
+        parse_errors = list(result['errors'])
         master_data = result.get('has_master_data', {})
 
-        # ─── Sincronizar Tablas Maestras ───
-        # 1. Oficinas (ID y Nombre real)
+        # ─── Sincronizar Tablas Maestras ──────────────────────────────────────
         for ofi in master_data.get('oficinas', []):
             OficinaOrg.objects.update_or_create(
-                id_oficina=ofi['id'],
-                defaults={'nombre_oficina_origen': str(ofi['nombre']).strip() or f"Oficina {ofi['id']}"}
-            )
-        
-        # 2. Prioridades (ID y Nombre descriptivo)
-        for prio in master_data.get('priorities', []):
-            PriorityRef.objects.update_or_create(
-                priority=prio['id'],
-                defaults={'priority_name': str(prio['nombre']).strip() or f"Prioridad {prio['id']}"}
+                id_oficina=str(ofi['id']).strip(),
+                defaults={
+                    'nombre_oficina_origen': str(ofi['nombre']).strip() if ofi['nombre'] else f"Oficina {ofi['id']}"
+                }
             )
 
-        # 3. Poblaciones / Puntos (ID, Ciudad y Coordenadas de referencia)
+        for prio in master_data.get('priorities', []):
+            PriorityRef.objects.update_or_create(
+                priority=str(prio['id']).strip(),
+                defaults={
+                    'priority_name': str(prio['nombre']).strip() if prio['nombre'] else f"Prioridad {prio['id']}"
+                }
+            )
+
         for pob in master_data.get('poblaciones', []):
             PoblacionCor.objects.update_or_create(
-                id_punto=pob['id'],
+                id_punto=str(pob['id']).strip(),
                 defaults={
-                    'ciudad': str(pob['ciudad']).strip(),
+                    'ciudad': str(pob['ciudad']).strip() if pob['ciudad'] else '',
                     'lat_ref': Decimal(str(pob['lat'] or 0)),
                     'lon_ref': Decimal(str(pob['lon'] or 0)),
                 }
             )
 
+        # ─── Insertar Rutas Válidas ───────────────────────────────────────────
         imported = 0
         duplicates = 0
+        service_errors = []  # errores detectados durante la inserción
 
         for row in valid_rows:
             try:
-                # Usar un bloque atómico por cada fila para que un error no aborte todo
                 with transaction.atomic():
-                    # 1. Asegurar que la oficina existe
+                    # Asegurar que la oficina existe si hay referencia
                     oficina_id = row.get('id_oficina_id')
                     if oficina_id:
                         OficinaOrg.objects.get_or_create(
-                            id_oficina=oficina_id,
+                            id_oficina=str(oficina_id),
                             defaults={'nombre_oficina_origen': f"Oficina {oficina_id} (Auto)"}
                         )
 
-                    # 2. Verificar duplicado
+                    # Verificar duplicado por clave de negocio
                     exists = Route.objects.filter(
                         origin=row['origin'],
                         destination=row['destination'],
@@ -73,15 +79,15 @@ class RouteImportService:
 
                     if exists:
                         duplicates += 1
-                        errors.append({
+                        service_errors.append({
                             'row': None,
                             'field': 'duplicado',
                             'value': f"{row['origin']} → {row['destination']}",
-                            'reason': 'Ruta duplicada: misma origen, destino y ventana horaria'
+                            'reason': 'Ruta duplicada: misma origen, destino y ventana horaria',
                         })
                         continue
 
-                    # 3. Crear la ruta
+                    # Crear la ruta
                     route_obj = Route.objects.create(
                         id_route=row['id_route'],
                         id_oficina_id=oficina_id,
@@ -95,12 +101,12 @@ class RouteImportService:
                         payload=row['payload'],
                         created_at=row['created_at'],
                     )
-                    
-                    # 4. Crear log inicial para TODAS las rutas (Traceability total)
+
+                    # Log de carga inicial (trazabilidad completa)
                     ExecutionLog.objects.create(
                         route=route_obj,
-                        result='SUCCESS' if route_obj.status in ['READY', 'PENDING', 'EXECUTED'] else 'ERROR',
-                        message=f"Ruta cargada en sistema. Estado inicial: {route_obj.status}"
+                        result='SUCCESS' if route_obj.status in ('READY', 'PENDING', 'EXECUTED') else 'ERROR',
+                        message=f"Ruta cargada en sistema. Estado inicial: {route_obj.status}",
                     )
 
                     imported += 1
@@ -108,32 +114,43 @@ class RouteImportService:
 
             except Exception as e:
                 duplicates += 1
-                errors.append({
+                service_errors.append({
                     'row': None,
                     'field': 'db_error',
                     'value': row.get('id_route'),
-                    'reason': f"Error en base de datos: {str(e)}"
+                    'reason': f"Error en base de datos: {str(e)}",
                 })
                 logger.warning(f"Error al importar ruta {row.get('id_route')}: {e}")
 
-        # 5. Registrar errores de PARSEO (los que no llegaron a ser valid_rows)
-        for err in result['errors']:
+        # ─── Crear logs de auditoría para los errores de PARSEO ───────────────
+        for err in parse_errors:
             ExecutionLog.objects.create(
                 route=None,
                 result='ERROR',
-                message=f"FALLO DE CARGA - Fila {err.get('row')}: Campo [{err.get('field')}] valor [{err.get('value')}] -> {err.get('reason')}"
+                message=(
+                    f"FALLO DE CARGA - Fila {err.get('row')}: "
+                    f"Campo [{err.get('field')}] "
+                    f"valor [{err.get('value')}] → {err.get('reason')}"
+                ),
             )
 
-        logger.info(f"Importación completada: {imported} importadas, {duplicates} duplicadas, {len(errors)} errores")
+        # Combinar todos los errores para el reporte
+        all_errors = parse_errors + service_errors
+
+        logger.info(
+            f"Importación completada: {imported} importadas, "
+            f"{duplicates} duplicadas/fallidas, "
+            f"{len(parse_errors)} errores de validación"
+        )
 
         return {
             'summary': {
-                'total': imported + duplicates + len(errors),
-                'imported': imported,
+                'total':      len(valid_rows) + len(parse_errors),
+                'imported':   imported,
                 'duplicates': duplicates,
-                'errors': len(errors),
+                'errors':     len(parse_errors),
             },
-            'errors': errors
+            'errors': all_errors,
         }
 
 
@@ -142,25 +159,27 @@ class RouteExecutionService:
     @staticmethod
     def execute(route_ids):
         """
-        Ejecuta una lista de rutas por su id_route.
-        Actualiza status a EXECUTED y crea un ExecutionLog por cada una.
+        Ejecuta una lista de rutas por su id_route (string).
+        - Actualiza status a EXECUTED
+        - Crea un ExecutionLog por cada ruta procesada
+        - Reporta rutas no encontradas o ya ejecutadas
         """
         executed = []
         failed = []
 
         for route_id in route_ids:
             try:
-                route = Route.objects.get(id_route=route_id)
+                route = Route.objects.get(id_route=str(route_id))
 
                 if route.status == 'EXECUTED':
                     failed.append({
                         'route_id': route_id,
-                        'reason': 'La ruta ya fue ejecutada anteriormente'
+                        'reason': 'La ruta ya fue ejecutada anteriormente',
                     })
                     ExecutionLog.objects.create(
                         route=route,
                         result='ERROR',
-                        message='La ruta ya fue ejecutada anteriormente'
+                        message='La ruta ya fue ejecutada anteriormente',
                     )
                     continue
 
@@ -170,7 +189,7 @@ class RouteExecutionService:
                 ExecutionLog.objects.create(
                     route=route,
                     result='SUCCESS',
-                    message='Ejecutada OK'
+                    message='Ejecutada correctamente',
                 )
 
                 executed.append(route_id)
@@ -179,23 +198,23 @@ class RouteExecutionService:
             except Route.DoesNotExist:
                 failed.append({
                     'route_id': route_id,
-                    'reason': 'Ruta no encontrada'
+                    'reason': 'Ruta no encontrada',
                 })
                 logger.warning(f"Ruta {route_id} no encontrada para ejecución")
 
             except Exception as e:
                 failed.append({
                     'route_id': route_id,
-                    'reason': str(e)
+                    'reason': str(e),
                 })
                 logger.error(f"Error ejecutando ruta {route_id}: {e}")
 
         return {
             'summary': {
-                'total': len(route_ids),
+                'total':    len(route_ids),
                 'executed': len(executed),
-                'failed': len(failed),
+                'failed':   len(failed),
             },
             'executed': executed,
-            'failed': failed,
+            'failed':   failed,
         }

@@ -4,10 +4,7 @@ from .utils import validate_coordinates
 
 
 class ExecutionLogSerializer(serializers.ModelSerializer):
-    """
-    Serializer de solo lectura para los logs de ejecución.
-    Usado en GET /routes/{id}/logs/
-    """
+    """Serializer de solo lectura para los logs de ejecución."""
     class Meta:
         model = ExecutionLog
         fields = ['id', 'route', 'execution_time', 'result', 'message']
@@ -17,7 +14,6 @@ class ExecutionLogSerializer(serializers.ModelSerializer):
 class RouteSerializer(serializers.ModelSerializer):
     """
     Serializer de lectura completa para listar rutas.
-    Usado en GET /routes/ y GET /routes/{id}/
     Incluye los logs de ejecución anidados.
     """
     execution_logs = ExecutionLogSerializer(many=True, read_only=True)
@@ -28,16 +24,15 @@ class RouteSerializer(serializers.ModelSerializer):
             'id', 'id_route', 'id_oficina_id',
             'origin', 'destination', 'distance_km',
             'priority', 'time_window_start', 'time_window_end',
-            'status', 'payload', 'created_at', 'execution_logs'
+            'status', 'payload', 'created_at', 'execution_logs',
         ]
         read_only_fields = ['id', 'created_at', 'execution_logs']
 
 
 class RouteCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer de escritura para creación individual de rutas.
-    Usado en POST /routes/
-    Implementa todas las validaciones de la prueba técnica — Pregunta #12.
+    Serializer de escritura para creación individual de rutas (POST /routes/).
+    Aplica todas las validaciones requeridas por la prueba técnica.
     """
     class Meta:
         model = Route
@@ -45,7 +40,7 @@ class RouteCreateSerializer(serializers.ModelSerializer):
             'id_route', 'id_oficina_id',
             'origin', 'destination', 'distance_km',
             'priority', 'time_window_start', 'time_window_end',
-            'status', 'payload'
+            'status', 'payload',
         ]
 
     # ── Validaciones de campo individual ──────────────────────────────────────
@@ -87,7 +82,7 @@ class RouteCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validaciones que involucran múltiples campos a la vez.
+        Validaciones que involucran múltiples campos.
         Se ejecuta después de todas las validaciones individuales.
         """
         tw_start = data.get('time_window_start')
@@ -99,19 +94,22 @@ class RouteCreateSerializer(serializers.ModelSerializer):
                 'time_window_end': 'Debe ser posterior a time_window_start.'
             })
 
-        # Validar duplicado
+        # Validar duplicado por clave de negocio
         origin = data.get('origin')
         destination = data.get('destination')
 
         if origin and destination and tw_start and tw_end:
-            exists = Route.objects.filter(
+            qs = Route.objects.filter(
                 origin=origin,
                 destination=destination,
                 time_window_start=tw_start,
                 time_window_end=tw_end,
-            ).exists()
+            )
+            # Excluir la instancia actual en caso de actualización
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
 
-            if exists:
+            if qs.exists():
                 raise serializers.ValidationError(
                     'Ya existe una ruta con el mismo origen, destino y ventana horaria.'
                 )
@@ -121,13 +119,13 @@ class RouteCreateSerializer(serializers.ModelSerializer):
 
 class RouteImportSerializer(serializers.Serializer):
     """
-    Serializer para recibir el archivo Excel en POST /routes/import/
-    Solo valida que el archivo exista y sea un .xlsx
+    Serializer para recibir el archivo Excel en POST /routes/import/.
+    Valida que el archivo exista y sea un .xlsx.
     """
     file = serializers.FileField()
 
     def validate_file(self, value):
-        if not value.name.endswith('.xlsx'):
+        if not value.name.lower().endswith('.xlsx'):
             raise serializers.ValidationError(
                 "Solo se aceptan archivos Excel con extensión .xlsx"
             )
@@ -136,10 +134,11 @@ class RouteImportSerializer(serializers.Serializer):
 
 class RouteExecuteSerializer(serializers.Serializer):
     """
-    Serializer para recibir los IDs en POST /routes/execute/
+    Serializer para recibir los IDs en POST /routes/execute/.
+    Los IDs son strings (pueden ser alfanuméricos).
     """
     route_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.CharField(max_length=50),
         min_length=1,
         error_messages={
             'min_length': 'Debe enviar al menos un ID de ruta para ejecutar.'

@@ -3,8 +3,9 @@ from django.db import models
 
 
 class OficinaOrg(models.Model):
-    id_oficina = models.IntegerField(unique=True)
-    nombre_oficina_origen = models.CharField(max_length=100)
+    """Catálogo de oficinas origen del dataset."""
+    id_oficina = models.CharField(max_length=50, unique=True)
+    nombre_oficina_origen = models.CharField(max_length=200)
 
     class Meta:
         db_table = 'oficina_org'
@@ -14,8 +15,9 @@ class OficinaOrg(models.Model):
 
 
 class PoblacionCor(models.Model):
-    id_punto = models.IntegerField(unique=True)
-    ciudad = models.CharField(max_length=100)
+    """Puntos geográficos de referencia (ciudades/municipios)."""
+    id_punto = models.CharField(max_length=50, unique=True)
+    ciudad = models.CharField(max_length=200)
     lat_ref = models.DecimalField(max_digits=12, decimal_places=8)
     lon_ref = models.DecimalField(max_digits=12, decimal_places=8)
 
@@ -27,8 +29,9 @@ class PoblacionCor(models.Model):
 
 
 class PriorityRef(models.Model):
-    priority = models.IntegerField(unique=True)
-    priority_name = models.CharField(max_length=20)
+    """Catálogo de prioridades de ruta."""
+    priority = models.CharField(max_length=50, unique=True)
+    priority_name = models.CharField(max_length=100)
 
     class Meta:
         db_table = 'priorities_ref'
@@ -38,6 +41,7 @@ class PriorityRef(models.Model):
 
 
 class Route(models.Model):
+    """Ruta logística principal."""
     STATUS_CHOICES = [
         ('READY', 'Ready'),
         ('PENDING', 'Pending'),
@@ -45,7 +49,12 @@ class Route(models.Model):
         ('FAILED', 'Failed'),
     ]
 
-    id_route = models.IntegerField(unique=True)
+    # PK autoincremental de Postgres — nunca viene del Excel
+    # id (BigAutoField) es generado automáticamente por Django
+
+    # ID externo del dataset (puede ser alfanumérico)
+    id_route = models.CharField(max_length=50, unique=True)
+
     id_oficina = models.ForeignKey(
         OficinaOrg,
         to_field='id_oficina',
@@ -61,7 +70,7 @@ class Route(models.Model):
     time_window_start = models.DateTimeField()
     time_window_end = models.DateTimeField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    payload = models.JSONField(null=True, blank=True)  # payload normalizado
+    payload = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField()
 
     class Meta:
@@ -78,6 +87,7 @@ class Route(models.Model):
 
 
 class ExecutionLog(models.Model):
+    """Registro de auditoría de ejecuciones y cargas."""
     RESULT_CHOICES = [
         ('SUCCESS', 'Success'),
         ('ERROR', 'Error'),
