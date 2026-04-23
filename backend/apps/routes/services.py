@@ -27,6 +27,8 @@ class RouteImportService:
         master_data = result.get('has_master_data', {})
 
         # ─── Sincronizar Tablas Maestras ──────────────────────────────────────
+        # ─── Sincronizar Tablas Maestras ──────────────────────────────────────
+        # 1. Oficinas
         for ofi in master_data.get('oficinas', []):
             OficinaOrg.objects.update_or_create(
                 id_oficina=str(ofi['id']).strip(),
@@ -34,7 +36,18 @@ class RouteImportService:
                     'nombre_oficina_origen': str(ofi['nombre']).strip() if ofi['nombre'] else f"Oficina {ofi['id']}"
                 }
             )
+        
+        # 2. Asegurar oficinas referenciadas en las filas de rutas
+        referenced_offices = set(str(row['id_oficina_id']) for row in valid_rows if row.get('id_oficina_id'))
+        existing_offices = set(OficinaOrg.objects.filter(id_oficina__in=referenced_offices).values_list('id_oficina', flat=True))
+        offices_to_create = [
+            OficinaOrg(id_oficina=oid, nombre_oficina_origen=f"Oficina {oid} (Auto)")
+            for oid in referenced_offices if oid not in existing_offices
+        ]
+        if offices_to_create:
+            OficinaOrg.objects.bulk_create(offices_to_create)
 
+        # 3. Prioridades
         for prio in master_data.get('priorities', []):
             PriorityRef.objects.update_or_create(
                 priority=str(prio['id']).strip(),
@@ -43,6 +56,7 @@ class RouteImportService:
                 }
             )
 
+        # 4. Poblaciones
         for pob in master_data.get('poblaciones', []):
             PoblacionCor.objects.update_or_create(
                 id_punto=str(pob['id']).strip(),
@@ -53,78 +67,87 @@ class RouteImportService:
                 }
             )
 
-        # ─── Insertar Rutas Válidas ───────────────────────────────────────────
+        # ─── Insertar Rutas Válidas (Optimizado con Bulk) ────────────────────
         imported = 0
         duplicates = 0
-        service_errors = []  # errores detectados durante la inserción
+        service_errors = []
+
+        # Obtener rutas existentes para evitar duplicados en memoria
+        # Usamos un set de tuplas (origin, destination, start, end) como "firma" de la ruta
+        existing_routes_signatures = set(
+            Route.objects.values_list('origin', 'destination', 'time_window_start', 'time_window_end')
+        )
+
+        routes_to_create = []
+        rows_to_process = []
 
         for row in valid_rows:
-            try:
-                with transaction.atomic():
-                    # Asegurar que la oficina existe si hay referencia
-                    oficina_id = row.get('id_oficina_id')
-                    if oficina_id:
-                        OficinaOrg.objects.get_or_create(
-                            id_oficina=str(oficina_id),
-                            defaults={'nombre_oficina_origen': f"Oficina {oficina_id} (Auto)"}
-                        )
-
-                    # Verificar duplicado por clave de negocio
-                    exists = Route.objects.filter(
-                        origin=row['origin'],
-                        destination=row['destination'],
-                        time_window_start=row['time_window_start'],
-                        time_window_end=row['time_window_end'],
-                    ).exists()
-
-                    if exists:
-                        duplicates += 1
-                        service_errors.append({
-                            'row': None,
-                            'field': 'duplicado',
-                            'value': f"{row['origin']} → {row['destination']}",
-                            'reason': 'Ruta duplicada: misma origen, destino y ventana horaria',
-                        })
-                        continue
-
-                    # Crear la ruta
-                    route_obj = Route.objects.create(
-                        id_route=row['id_route'],
-                        id_oficina_id=oficina_id,
-                        origin=row['origin'],
-                        destination=row['destination'],
-                        distance_km=row['distance_km'],
-                        priority=row['priority'],
-                        time_window_start=row['time_window_start'],
-                        time_window_end=row['time_window_end'],
-                        status=row['status'],
-                        payload=row['payload'],
-                        created_at=row['created_at'],
-                    )
-
-                    # Log de carga inicial (trazabilidad completa)
-                    ExecutionLog.objects.create(
-                        route=route_obj,
-                        result='SUCCESS' if route_obj.status in ('READY', 'PENDING', 'EXECUTED') else 'ERROR',
-                        message=f"Ruta cargada en sistema. Estado inicial: {route_obj.status}",
-                    )
-
-                    imported += 1
-                    logger.info(f"Ruta {row['id_route']} importada correctamente")
-
-            except Exception as e:
+            signature = (row['origin'], row['destination'], row['time_window_start'], row['time_window_end'])
+            
+            if signature in existing_routes_signatures:
                 duplicates += 1
                 service_errors.append({
                     'row': None,
-                    'field': 'db_error',
-                    'value': row.get('id_route'),
-                    'reason': f"Error en base de datos: {str(e)}",
+                    'field': 'duplicado',
+                    'value': f"{row['origin']} → {row['destination']}",
+                    'reason': 'Ruta duplicada: misma origen, destino y ventana horaria',
                 })
-                logger.warning(f"Error al importar ruta {row.get('id_route')}: {e}")
+                continue
+            
+            # Preparar objeto Route (sin guardar aún)
+            route_obj = Route(
+                id_route=row['id_route'],
+                id_oficina_id=row.get('id_oficina_id'),
+                origin=row['origin'],
+                destination=row['destination'],
+                distance_km=row['distance_km'],
+                priority=row['priority'],
+                time_window_start=row['time_window_start'],
+                time_window_end=row['time_window_end'],
+                status=row['status'],
+                payload=row['payload'],
+                created_at=row['created_at'],
+            )
+            routes_to_create.append(route_obj)
+            rows_to_process.append(row)
+            # Añadir a la firma para evitar duplicados dentro del mismo Excel
+            existing_routes_signatures.add(signature)
+
+        if routes_to_create:
+            try:
+                with transaction.atomic():
+                    # 1. Insertar Rutas en bloque
+                    created_routes = Route.objects.bulk_create(routes_to_create)
+                    imported = len(created_routes)
+
+                    # 2. Crear logs de éxito en bloque
+                    logs_to_create = [
+                        ExecutionLog(
+                            route=route,
+                            result='SUCCESS' if route.status in ('READY', 'PENDING', 'EXECUTED') else 'ERROR',
+                            message=f"Ruta cargada en sistema. Estado inicial: {route.status}",
+                        )
+                        for route in created_routes
+                    ]
+                    ExecutionLog.objects.bulk_create(logs_to_create)
+                    
+                    for route in created_routes:
+                        logger.info(f"Ruta {route.id_route} importada correctamente (bulk)")
+
+            except Exception as e:
+                logger.error(f"Error crítico en bulk_create: {e}")
+                service_errors.append({
+                    'row': None,
+                    'field': 'db_error',
+                    'value': 'BATCH',
+                    'reason': f"Error crítico al guardar bloque de rutas: {str(e)}",
+                })
+                # En caso de error en el bloque, no marcamos ninguna como importada
+                imported = 0
 
         # ─── Crear logs de auditoría para los errores de PARSEO ───────────────
-        for err in parse_errors:
-            ExecutionLog.objects.create(
+        parse_logs = [
+            ExecutionLog(
                 route=None,
                 result='ERROR',
                 message=(
@@ -133,6 +156,10 @@ class RouteImportService:
                     f"valor [{err.get('value')}] → {err.get('reason')}"
                 ),
             )
+            for err in parse_errors
+        ]
+        if parse_logs:
+            ExecutionLog.objects.bulk_create(parse_logs)
 
         # Combinar todos los errores para el reporte
         all_errors = parse_errors + service_errors
