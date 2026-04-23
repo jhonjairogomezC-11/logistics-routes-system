@@ -69,7 +69,7 @@ Esta es la forma más rápida. En dos minutos tenemos los tres servicios corrien
 
 ```bash
 # 1. Clonar el repositorio
-git clone <url-del-repo>
+git clone https://github.com/jhonjairogomezC-11/logistics-routes-system.git
 cd logistics-routes-system
 
 # 2. Levantar todo
