@@ -1,6 +1,7 @@
 # apps/routes/views.py
 import logging
 
+from django.db.models import Count
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status
@@ -131,3 +132,22 @@ class GlobalExecutionLogListView(ListAPIView):
             return Response({'success': True, 'data': paginated_response.data})
         serializer = self.get_serializer(queryset, many=True)
         return Response({'success': True, 'data': serializer.data})
+
+
+class DashboardStatsView(APIView):
+    """
+    GET /api/dashboard/stats/ → Obtiene las estadísticas para el dashboard.
+    """
+    def get(self, request):
+        stats = Route.objects.values('status').annotate(total=Count('id'))
+        
+        # Formatear el resultado para el frontend
+        data = {
+            'total': Route.objects.count(),
+            'ready': Route.objects.filter(status='READY').count(),
+            'pending': Route.objects.filter(status='PENDING').count(),
+            'executed': Route.objects.filter(status='EXECUTED').count(),
+            'failed': Route.objects.filter(status='FAILED').count(),
+        }
+        
+        return Response({'success': True, 'data': data})

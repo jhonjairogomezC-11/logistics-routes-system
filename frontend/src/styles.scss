@@ -1,1 +1,33 @@
 /* You can add global styles to this file, and also import other style files */
+@import '@angular/material/prebuilt-themes/indigo-pink.css';
+
+html, body { 
+  height: 100%; 
+  margin: 0; 
+  font-family: Roboto, "Helvetica Neue", sans-serif; 
+  background-color: #f5f7fa;
+}
+
+/* Global Utility Styles */
+.shadow-card {
+  box-shadow: 0 4px 20px 0 rgba(0,0,0,0.05) !important;
+  border-radius: 12px !important;
+  border: none !important;
+}
+
+.header-section {
+  margin-bottom: 32px;
+}
+
+.subtitle {
+  color: #666;
+  font-size: 1rem;
+  margin-top: 4px;
+}
+
+.mb-4 { margin-bottom: 1.5rem !important; }
+.mt-4 { margin-top: 1.5rem !important; }
+.d-flex { display: flex !important; }
+.justify-content-between { justify-content: space-between !important; }
+.align-items-center { align-items: center !important; }
+.text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

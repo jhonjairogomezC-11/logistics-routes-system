@@ -1,4 +1,5 @@
 from django.db import transaction
+from decimal import Decimal
 from .models import Route, ExecutionLog
 from .utils import parse_excel
 import logging
@@ -127,10 +128,10 @@ class RouteImportService:
 
         return {
             'summary': {
-                'total': imported + duplicates + len(errors) + len(result['errors']),
+                'total': imported + duplicates + len(errors),
                 'imported': imported,
                 'duplicates': duplicates,
-                'errors': len(errors) + len(result['errors']),
+                'errors': len(errors),
             },
             'errors': errors
         }
